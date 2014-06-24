@@ -82,6 +82,13 @@ all:parser
 	@${CPLUS} -MD ${INC} ${COPT}  -c cb/help.cpp -o .objs/help.o
 	@mv .objs/help.d .deps
 
+.objs/origin.o : cb/origin.cpp
+	@echo c++ -- cb/origin.cpp
+	@mkdir -p .deps
+	@mkdir -p .objs
+	@${CPLUS} -MD ${INC} ${COPT}  -c cb/origin.cpp -o .objs/origin.o
+	@mv .objs/origin.d .deps
+
 .objs/rewards.o : cb/rewards.cpp
 	@echo c++ -- cb/rewards.cpp
 	@mkdir -p .deps
@@ -167,6 +174,7 @@ OBJS=                       \
     .objs/help.o            \
     .objs/opcodes.o         \
     .objs/option.o          \
+    .objs/origin.o          \
     .objs/parser.o          \
     .objs/pristine.o        \
     .objs/rewards.o         \
