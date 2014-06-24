@@ -12,31 +12,29 @@
 #include <string.h>
 #include <callback.h>
 
-typedef long double Number;
-//typedef GoogMap<Hash256, int, Hash256Hasher, Hash256Equal >::Map TxMap;
-//typedef GoogMap<Hash256, Number, Hash256Hasher, Hash256Equal >::Map TaintMap;
 
 typedef struct {
     Hash160 addr;
-    Number value; // long double
+    long double value;
 } AddressPair;
 
 typedef struct {
     Hash256 tx;
-    uint32_t blockNum;
-    uint16_t numInputs;
-    uint16_t numOutputs;
+    uint32_t numInputs;
+    uint32_t numOutputs;
     AddressPair *input;
     AddressPair *output;
 } TxEntry;
 
-typedef struct {
-    uint32_t numTx;
-    TxEntry *tx;
-} TxLog;
-
 // maintains references to all transactions this account is involved in.
-typedef GoogMap<Hash160, TxLog, Hash160Hasher, Hash160Equal >::Map AddressMap; 
+typedef GoogMap<Hash160, std::vector<TxEntry*>, Hash160Hasher, Hash160Equal >::Map AddressMap; 
+
+
+template<> uint8_t *PagedAllocator<TxEntry>::pool = 0;
+template<> uint8_t *PagedAllocator<TxEntry>::poolEnd = 0;
+static inline TxEntry *allocTxEntry() { return (TxEntry*)PagedAllocator<TxEntry>::alloc(); }
+
+typedef long double Number;
 
 static inline void printNumber(
     const Number &x
@@ -50,13 +48,14 @@ struct Origin:public Callback
     optparse::OptionParser parser;
 
     double threshold;
-    uint128_t txTotal;
-    const uint8_t *txHash;
     
     AddressMap addressMap;
-    uint256_t endTx;
+    
+    Hash256 endTx;
     
     bool isLastBlock;
+    
+    TxEntry *currentEntry;
     
 
     Origin()
@@ -81,7 +80,8 @@ struct Origin:public Callback
     )
     {
         threshold = 1e-5;
-        std::vector<uint256_t> rootHashes;
+        std::vector<Hash256> rootHashes;
+        
         isLastBlock = false;
 
         optparse::Values &values = parser.parse_args(argc, argv);
@@ -101,7 +101,8 @@ struct Origin:public Callback
             info("... specifying a lower bounding transaction is not supported at the moment.");
         }
         
-        endTx = rootHashes.front();
+
+        memcpy(endTx, rootHashes.front(), 32);
 
         static uint8_t empty[kRIPEMD160ByteSize] = { 0x42 };
         static uint64_t sz = 15 * 1000 * 1000;
@@ -113,7 +114,7 @@ struct Origin:public Callback
 
     virtual void wrapup()
     {
-        // if analysis hasn't occured yet, either perform it now or warn the user before quitting.
+        // perform analysis and then abort.
         
     }
 
@@ -122,7 +123,16 @@ struct Origin:public Callback
         const uint8_t *hash
     )
     {
-        // allocate a new TxEntry
+        currentEntry = allocTxEntry();
+        
+        memcpy(&(currentEntry->tx), hash, 32);
+        
+        currentEntry->numInputs = 0;
+        currentEntry->numOutputs = 0;
+        
+        if(unlikely(memcmp(hash, endTx, 32))) {
+            isLastBlock = true;
+        }
     }
 
     virtual void endTX(
@@ -130,7 +140,14 @@ struct Origin:public Callback
     )
     {
         // add a reference to this TxEntry to the TxLog of each address listed as
-        // an _output_ of the tx. this essentially "reverses" the edges. 
+        // an _output_, or reciever of funds in the tx. this essentially "reverses" the edges. 
+        
+        AddressPair pair;
+        uint32_t size = currentEntry->numOutputs;
+        for(uint32_t i = 0; i < size; ++i) {
+            pair = currentEntry->output[i];
+            addressMap[pair.addr].push_back(currentEntry);
+        }
     }
 
     virtual void edge(
@@ -149,14 +166,9 @@ struct Origin:public Callback
     }
     
     virtual void endBlock(const Block *b) {
-        
-        // increment block counter if needed
-        // check bool indicating if this is the last block. 
-        
-        // if so, start analysis
-        
-        // after analysis, abort.
-        
+        if(unlikely(isLastBlock)) {
+            wrapup();
+        }
     }
     
 };
