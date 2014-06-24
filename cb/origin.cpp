@@ -80,7 +80,7 @@ struct Origin:public Callback
     )
     {
         threshold = 1e-5;
-        std::vector<Hash256> rootHashes;
+        std::vector<uint256_t> rootHashes;
         
         isLastBlock = false;
 
@@ -101,8 +101,9 @@ struct Origin:public Callback
             info("... specifying a lower bounding transaction is not supported at the moment.");
         }
         
+        endTx = allocHash256();
 
-        memcpy(endTx, rootHashes.front(), 32);
+        memcpy((uint8_t*)endTx, rootHashes.front().v, kSHA256ByteSize);
 
         static uint8_t empty[kRIPEMD160ByteSize] = { 0x42 };
         static uint64_t sz = 15 * 1000 * 1000;
@@ -124,13 +125,14 @@ struct Origin:public Callback
     )
     {
         currentEntry = allocTxEntry();
+        currentEntry->tx = allocHash256();
         
-        memcpy(&(currentEntry->tx), hash, 32);
+        memcpy((void*)currentEntry->tx, hash, kSHA256ByteSize);
         
         currentEntry->numInputs = 0;
         currentEntry->numOutputs = 0;
         
-        if(unlikely(memcmp(hash, endTx, 32))) {
+        if(unlikely(memcmp(hash, endTx, kSHA256ByteSize))) {
             isLastBlock = true;
         }
     }
@@ -162,7 +164,18 @@ struct Origin:public Callback
         uint64_t      inputScriptSize
     )
     {
-        // record all of this data in the TxEntry
+        uint8_t addrType[3];
+        uint160_t pubKeyHash;
+        int type = solveOutputScript(pubKeyHash.v, outputScript, outputScriptSize, addrType);
+        
+        // this would happen if the script doesn't match one of the common script types.
+        // the implementation of the solveOutputScriptas of 6/24/14 seems very primitive
+        // and doesn't implement the entire script language.
+        if(unlikely(type<0)) {
+            return;
+        }
+        
+        
     }
     
     virtual void endBlock(const Block *b) {
